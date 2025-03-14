@@ -40,6 +40,8 @@ Build
 ```bash
 cd ./rkllseek
 
+chmod +x ./build.sh
+
 ./build.sh
 ```
 
