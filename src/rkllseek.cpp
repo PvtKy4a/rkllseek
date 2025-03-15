@@ -14,7 +14,7 @@
 
 #define BOS_TOKEN "<｜begin▁of▁sentence｜>"
 #define USER_TOKEN "<｜User｜>"
-#define ASSISTANT_TOKEN "\n<｜Assistant｜>"
+#define ASSISTANT_TOKEN "<｜Assistant｜>"
 #define THINK_START_TOKEN "<think>\n"
 #define THINK_STOP_TOKEN "</think>"
 #define EOS_TOKEN "<｜end▁of▁sentence｜>\n"
@@ -26,6 +26,8 @@ static std::string history;
 static std::string request;
 
 static std::string response;
+
+static bool include_reasoning = false;
 
 static const char *is_think = NULL;
 
@@ -84,6 +86,13 @@ static void rkllm_callback(RKLLMResult *result, void *userdata, LLMCallState sta
         {
             response.append(EOS_TOKEN);
 
+            if (!include_reasoning)
+            {
+                history.erase(history.end() - strlen(THINK_STOP_TOKEN), history.end());
+            }
+
+            history.erase(history.end() - strlen(THINK_START_TOKEN), history.end());
+
             history.append(response);
         }
 
@@ -101,15 +110,22 @@ static void rkllm_callback(RKLLMResult *result, void *userdata, LLMCallState sta
     case RKLLM_RUN_NORMAL:
         std::cout << result->text;
 
-        if (is_think == NULL)
+        if (include_reasoning)
         {
-            is_think = strstr(result->text, THINK_STOP_TOKEN);
+            if (is_think == NULL)
+            {
+                is_think = strstr(result->text, THINK_STOP_TOKEN);
+            }
+            else
+            {
+                response.append(result->text);
+            }
         }
-
-        if (is_think != NULL)
+        else
         {
             response.append(result->text);
         }
+        
         break;
 
     default:
@@ -145,6 +161,8 @@ static void print_help(void)
 {
     std::cout << std::endl << "/regenerate      Regenerate last response";
     std::cout << std::endl << "/clear           Clear session context";
+    std::cout << std::endl << "/set reasoning   Enable DeepThink (enabled by default)";
+    std::cout << std::endl << "/unset reasoning Disable DeepThink";
     std::cout << std::endl << "/bye             Exit";
     std::cout << std::endl << "/? shortcuts     Regenerate last response";
     std::cout << std::endl;
@@ -180,16 +198,17 @@ int main(int argc, char **argv)
     llm_param = rkllm_createDefaultParam();
 
     llm_param.model_path = argv[1];
-
+    llm_param.max_context_len = std::atoi(argv[3]);
+    llm_param.max_new_tokens = std::atoi(argv[2]);
     llm_param.top_k = 20;
     llm_param.top_p = 0.95;
     llm_param.temperature = 0.6;
     llm_param.repeat_penalty = 1.1;
     llm_param.frequency_penalty = 0.0;
     llm_param.presence_penalty = 0.0;
-
-    llm_param.max_new_tokens = std::atoi(argv[2]);
-    llm_param.max_context_len = std::atoi(argv[3]);
+    llm_param.mirostat = 0;
+    llm_param.mirostat_tau = 3.0;
+    llm_param.mirostat_eta = 0.1;
     llm_param.skip_special_token = true;
     llm_param.extend_param.base_domain_id = 0;
 
@@ -256,6 +275,20 @@ int main(int argc, char **argv)
             continue;
         }
 
+        if (strcmp(prompt, "/set reasoning") == 0)
+        {
+            include_reasoning = true;
+
+            continue;
+        }
+
+        if (strcmp(prompt, "/unset reasoning") == 0)
+        {
+            include_reasoning = false;
+
+            continue;
+        }
+
         if (strcmp(prompt, "/regenerate") == 0)
         {
             if (history.empty())
@@ -283,6 +316,11 @@ int main(int argc, char **argv)
             request.append(prompt);
             request.append(ASSISTANT_TOKEN);
             request.append(THINK_START_TOKEN);
+
+            if (!include_reasoning)
+            {
+                request.append(THINK_STOP_TOKEN);
+            }
 
             history.append(request);
         }
