@@ -1,7 +1,7 @@
 # Overview
 This project is designed to run DeepSeek-R1-Distill on Rockchip RK3588 NPU in chat mode.
 
-The open-source models for this project is available at [Hugging Face](https://huggingface.co/models?sort=trending&search=rk3588).
+The open-source models for this project is available at [Hugging Face](https://huggingface.co/models?sort=trending&search=deepseek-r1+rk3588).
 
 ## Build
 
