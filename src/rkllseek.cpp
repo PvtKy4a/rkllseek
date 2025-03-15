@@ -27,7 +27,7 @@ static std::string request;
 
 static std::string response;
 
-static bool include_reasoning = false;
+static bool include_reasoning = true;
 
 static const char *is_think = NULL;
 
