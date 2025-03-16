@@ -1,5 +1,6 @@
 #include <string>
 #include <iostream>
+#include <fstream>
 #include <algorithm>
 
 #include <signal.h>
@@ -19,7 +20,7 @@
 #define THINK_STOP_TOKEN "</think>"
 #define EOS_TOKEN "<｜end▁of▁sentence｜>\n"
 
-static LLMHandle llm_handle = nullptr;
+static LLMHandle rkllm_handle = NULL;
 
 static std::string history;
 
@@ -29,6 +30,8 @@ static std::string response;
 
 static bool include_reasoning = true;
 
+static bool include_history = true;
+
 static const char *is_think = NULL;
 
 static bool is_abort = false;
@@ -37,9 +40,9 @@ static void exit_handler(int signal)
 {
     std::cout << std::endl << "rkllseek exiting..." << std::endl;
 
-    if (llm_handle != nullptr)
+    if (rkllm_handle != NULL)
     {
-        rkllm_destroy(llm_handle);
+        rkllm_destroy(rkllm_handle);
     }
 
     exit(signal);
@@ -47,9 +50,9 @@ static void exit_handler(int signal)
 
 static void abort_handler(int signal)
 {
-    if (llm_handle != nullptr && rkllm_is_running(llm_handle))
+    if (rkllm_handle != nullptr && rkllm_is_running(rkllm_handle))
     {
-        rkllm_abort(llm_handle);
+        rkllm_abort(rkllm_handle);
 
         is_abort = true;
     }
@@ -160,20 +163,69 @@ static char *rl_gets(void)
 static void print_help(void)
 {
     std::cout << std::endl << "/regenerate      Regenerate last response";
-    std::cout << std::endl << "/clear           Clear session context";
+    std::cout << std::endl << "/clear           Clear chat history";
     std::cout << std::endl << "/set reasoning   Enable DeepThink (enabled by default)";
     std::cout << std::endl << "/unset reasoning Disable DeepThink";
+    std::cout << std::endl << "/set history     Enable chat history (enabled by default)";
+    std::cout << std::endl << "/unset history   Disable chat history";
+    std::cout << std::endl << "/save <file>     Save chat history to specified file";
+    std::cout << std::endl << "/load <file>     Load chat history from specified file";
     std::cout << std::endl << "/bye             Exit";
-    std::cout << std::endl << "/? shortcuts     Regenerate last response";
     std::cout << std::endl;
-}
-
-static void print_help_shortcuts(void)
-{
     std::cout << std::endl << "Ctrl + l         Clear the screen";
     std::cout << std::endl << "Ctrl + c         Stop the model from responding";
     std::cout << std::endl << "Ctrl + d         Exit (/bye)";
     std::cout << std::endl;
+}
+
+static void save_history(const char *file_path)
+{
+    std::ofstream out;
+
+    out.open(file_path);
+
+    if (!out.is_open())
+    {
+        std::cout << std::endl << "Save failed!" << std::endl;
+
+        return;
+    }
+
+    out << history;
+
+    out.close();
+
+    std::cout << std::endl << "Save success!" << std::endl;
+}
+
+static void load_history(const char *file_path)
+{
+    std::ifstream in;
+
+    std::string line;
+
+    in.open(file_path);
+
+    if (!in.is_open())
+    {
+        std::cout << std::endl << "Load failed!" << std::endl;
+
+        return;
+    }
+
+    if (!history.empty())
+    {
+        history.clear();
+    }
+
+    while (std::getline(in, line))
+    {
+        history.append(line);
+    }
+
+    in.close();
+
+    std::cout << std::endl << "Load success!" << std::endl;
 }
 
 int main(int argc, char **argv)
@@ -188,7 +240,7 @@ int main(int argc, char **argv)
 
     if (argc < 4)
     {
-        std::cout << "Usage: " << "rkllseek" << " /path/to/model.rkllm max_new_tokens max_context_len" << std::endl;
+        std::cout << "Usage: " << "rkllseek" << " /path/to/model.rkllm <max_new_tokens> <max_context_len>" << std::endl;
 
         exit_handler(0);
     }
@@ -212,7 +264,7 @@ int main(int argc, char **argv)
     llm_param.skip_special_token = true;
     llm_param.extend_param.base_domain_id = 0;
 
-    ret = rkllm_init(&llm_handle, &llm_param, rkllm_callback);
+    ret = rkllm_init(&rkllm_handle, &llm_param, rkllm_callback);
 
     if (ret != 0)
     {
@@ -259,13 +311,6 @@ int main(int argc, char **argv)
             continue;
         }
 
-        if (strcmp(prompt, "/? shortcuts") == 0)
-        {
-            print_help_shortcuts();
-
-            continue;
-        }
-
         if (strcmp(prompt, "/clear") == 0)
         {
             history.clear();
@@ -285,6 +330,34 @@ int main(int argc, char **argv)
         if (strcmp(prompt, "/unset reasoning") == 0)
         {
             include_reasoning = false;
+
+            continue;
+        }
+
+        if (strcmp(prompt, "/set history") == 0)
+        {
+            include_history = true;
+
+            continue;
+        }
+
+        if (strcmp(prompt, "/unset history") == 0)
+        {
+            include_history = false;
+
+            continue;
+        }
+
+        if (strstr(prompt, "/save") != NULL)
+        {
+            save_history(prompt + strlen("/save "));
+
+            continue;
+        }
+
+        if (strstr(prompt, "/load") != NULL)
+        {
+            load_history(prompt + strlen("/load "));
 
             continue;
         }
@@ -322,6 +395,11 @@ int main(int argc, char **argv)
                 request.append(THINK_STOP_TOKEN);
             }
 
+            if (!include_history)
+            {
+                history.clear();
+            }
+
             history.append(request);
         }
 
@@ -331,7 +409,7 @@ int main(int argc, char **argv)
 
         std::cout << std::endl << "DeepSeek: ";
 
-        ret = rkllm_run(llm_handle, &rkllm_input, &rkllm_infer_param, NULL);
+        ret = rkllm_run(rkllm_handle, &rkllm_input, &rkllm_infer_param, NULL);
 
         if (ret != 0)
         {
